@@ -214,10 +214,11 @@ func (s *Synchronizer[T]) calendarQueryTimeMin(events []T) time.Time {
 	timeMin := time.Now()
 	for _, ev := range events {
 		e := ev.CalendarEvent()
+		// TODO: All Day events have Start.Date, not Start.DateTime.  Capture both.
 		t := e.Start.DateTime
 		start, err := time.Parse(time.RFC3339, t)
 		if err != nil {
-			slog.Warn("Event does not have RFC3339 formated time, making it invalid for insertion.  Skipping in query time min, but this will cause a failure later.", "event", ev)
+			slog.Warn("Event does not have RFC3339 formated time, making it invalid for insertion.  Skipping in query time min, but this will cause a failure later.", "DateTime", t, "event", ev)
 			continue
 		}
 
@@ -225,6 +226,6 @@ func (s *Synchronizer[T]) calendarQueryTimeMin(events []T) time.Time {
 			timeMin = start
 		}
 	}
-	timeMin = timeMin.Add(-time.Hour)
+	timeMin = timeMin.Add(-24 * time.Hour)
 	return timeMin
 }
