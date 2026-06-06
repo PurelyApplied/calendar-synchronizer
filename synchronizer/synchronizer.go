@@ -211,12 +211,6 @@ func (s *Synchronizer[T]) ActionPlan(events []T) (map[string]EventPlan[T], error
 }
 
 func (s *Synchronizer[T]) calendarQueryTimeMin(events []T) time.Time {
-	// TODO: Provide options rather than hard-coding [-1h, nil]:
-	// WithTimeMin
-	// WithTimeMinBuffer
-	// WithTimeMax
-	// WithTimeMaxBuffer
-
 	timeMin := time.Now()
 	for _, ev := range events {
 		e := ev.CalendarEvent()
