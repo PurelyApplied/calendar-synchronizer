@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PurelyApplied/calendar-synchronizer/opts"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"google.golang.org/api/calendar/v3"
 	"google.golang.org/api/googleapi"
@@ -50,6 +51,8 @@ type Synchronizer[T Eventable] struct {
 
 	// EventKey returns the identifiable key for the conceptual event that this calendar event represents.
 	EventKey func(*calendar.Event) (string, error)
+
+	options opts.Options
 }
 
 // EventPlan correlates proposed and existing events, noting intended Calendar operations and holding any error experienced.
@@ -233,4 +236,41 @@ func (s *Synchronizer[T]) calendarQueryTimeMin(events []T) time.Time {
 	}
 	timeMin = timeMin.Add(-time.Hour)
 	return timeMin
+}
+
+// TODO: WIP
+func (s *Synchronizer[T]) optsAwareCalendarQueryTimeMin(events []T) (timeMin, timeMax time.Time) {
+
+	timeMin, timeMax = time.Now(), time.Now()
+
+	// TODO: Early-bail checks, e.g., explicitly set bounds don't need to do this legwork
+	for _, ev := range events {
+		e := ev.CalendarEvent()
+		t := e.Start.DateTime
+		start, err := time.Parse(time.RFC3339, t)
+		if err != nil {
+			slog.Warn("Event does not have RFC3339 formated time, making it invalid for insertion.  Skipping in query time min, but this will cause a failure later.", "event", ev)
+			continue
+		}
+
+		if start.Before(timeMin) {
+			timeMin = start
+		}
+		if start.After(timeMax) {
+			timeMax = start
+		}
+	}
+	timeMin = timeMin.Add(-s.options.TimeMinBuffer)
+	timeMax = timeMax.Add(s.options.TimeMaxBuffer)
+
+	// Explicitly set values overwrite buffer values
+	zero := time.Time{}
+	if s.options.TimeMax != zero {
+		timeMax = s.options.TimeMax
+	}
+	if s.options.TimeMin != zero {
+		timeMin = s.options.TimeMin
+	}
+
+	return timeMin, timeMax
 }
