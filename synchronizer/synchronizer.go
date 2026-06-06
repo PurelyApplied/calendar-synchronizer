@@ -28,7 +28,7 @@ const (
 
 // Eventable is the interface for proposable events.
 type Eventable interface {
-	// Calendar event returns the event as one ready to be inserted into Google Calendar.
+	// CalendarEvent returns the event as one ready to be inserted into Google Calendar.
 	// TODO: For implementations of this interface, a zero-value struct must return nil.
 	CalendarEvent() *calendar.Event
 	// Key returns an identifiable key for the conceptual event that this proposed event represents.
