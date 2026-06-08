@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/PurelyApplied/calendar-synchronizer/synchronizer"
 	"github.com/PurelyApplied/calendar-synchronizer/synchronizer/internal"
+	"github.com/PurelyApplied/calendar-synchronizer/synchronizer/types"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
 	"google.golang.org/api/calendar/v3"
@@ -16,7 +16,7 @@ import (
 
 // Eventable are synchronizer.Eventable types that also implement Row()
 type Eventable interface {
-	synchronizer.Eventable
+	types.Eventable
 	Row() table.Row
 }
 
@@ -24,8 +24,8 @@ type Eventable interface {
 var _ Synchronizer[Eventable] = &syncher[Eventable]{}
 
 type Synchronizer[T Eventable] interface {
-	synchronizer.Synchronizer[T]
-	Table(plan map[string]synchronizer.EventPlan[T]) (table.Writer, TableConfig)
+	types.Synchronizer[T]
+	Table(plan map[string]types.EventPlan[T]) (table.Writer, TableConfig)
 }
 
 type syncher[T Eventable] struct {
@@ -35,15 +35,15 @@ type syncher[T Eventable] struct {
 	header table.Row
 }
 
-func (s *syncher[T]) Do(ctx context.Context, events []T) (map[string]synchronizer.EventPlan[T], error) {
+func (s *syncher[T]) Do(ctx context.Context, events []T) (map[string]types.EventPlan[T], error) {
 	return s.synchronizer.Do(ctx, events)
 }
 
-func (s *syncher[T]) ExecutePlan(actionPlan map[string]synchronizer.EventPlan[T]) error {
+func (s *syncher[T]) ExecutePlan(actionPlan map[string]types.EventPlan[T]) error {
 	return s.synchronizer.ExecutePlan(actionPlan)
 }
 
-func (s *syncher[T]) ActionPlan(events []T) (map[string]synchronizer.EventPlan[T], error) {
+func (s *syncher[T]) ActionPlan(events []T) (map[string]types.EventPlan[T], error) {
 	return s.synchronizer.ActionPlan(events)
 }
 
@@ -58,11 +58,11 @@ func New[T Eventable](Service *calendar.Service, CalendarID string, EventKey fun
 	}
 }
 
-var RowColors = map[synchronizer.CalendarOperation]text.Color{
-	synchronizer.InsertCalendarOp: text.FgBlue,
-	synchronizer.DeleteCalendarOp: text.FgRed,
-	synchronizer.UpdateCalendarOp: text.FgYellow,
-	synchronizer.NilCalendarOp:    text.FgGreen,
+var RowColors = map[types.CalendarOperation]text.Color{
+	types.InsertCalendarOp: text.FgBlue,
+	types.DeleteCalendarOp: text.FgRed,
+	types.UpdateCalendarOp: text.FgYellow,
+	types.NilCalendarOp:    text.FgGreen,
 }
 
 type TableConfig struct {
@@ -91,7 +91,7 @@ type TableConfig struct {
 // - - "Done" renders bools as 🗸 or
 // - SuppressEmptyColumns() is given (since ideally, "Error" will be empty).
 // These configurations are returned as the second return, if you would like to modify them.
-func (s *syncher[T]) Table(plan map[string]synchronizer.EventPlan[T]) (table.Writer, TableConfig) {
+func (s *syncher[T]) Table(plan map[string]types.EventPlan[T]) (table.Writer, TableConfig) {
 	tbl := table.NewWriter()
 	cfg := TableConfig{}
 	var head table.Row
@@ -118,7 +118,7 @@ func (s *syncher[T]) Table(plan map[string]synchronizer.EventPlan[T]) (table.Wri
 	}
 
 	painter := func(row table.Row) text.Colors {
-		op, ok := row[operationColumn].(synchronizer.CalendarOperation)
+		op, ok := row[operationColumn].(types.CalendarOperation)
 		if !ok {
 			return nil
 		}
@@ -134,7 +134,7 @@ func (s *syncher[T]) Table(plan map[string]synchronizer.EventPlan[T]) (table.Wri
 		{
 			Name:     "Op",
 			Operator: table.NotEqual,
-			Value:    synchronizer.NilCalendarOp,
+			Value:    types.NilCalendarOp,
 		},
 	}
 	tbl.FilterBy(filter)
@@ -190,7 +190,7 @@ func (s *syncher[T]) Table(plan map[string]synchronizer.EventPlan[T]) (table.Wri
 
 // EventPlan correlates proposed and existing events, noting intended Calendar operations and holding any error experienced.
 type EventPlan[T Eventable] struct {
-	synchronizer.EventPlan[T]
+	types.EventPlan[T]
 }
 
 // Row returns a table.Row containing State, ResultErr, Proposed event, and Calendar Event URL (if any).

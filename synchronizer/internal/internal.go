@@ -8,15 +8,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PurelyApplied/calendar-synchronizer/synchronizer"
+	"github.com/PurelyApplied/calendar-synchronizer/synchronizer/types"
 	"google.golang.org/api/calendar/v3"
 	"google.golang.org/api/googleapi"
 )
 
 // test assertion: tabular Synchronizer is still a Synchronizer
-var _ synchronizer.Synchronizer[synchronizer.Eventable] = &Syncher[synchronizer.Eventable]{}
+var _ types.Synchronizer[types.Eventable] = &Syncher[types.Eventable]{}
 
-type Syncher[T synchronizer.Eventable] struct {
+type Syncher[T types.Eventable] struct {
 	Service    *calendar.Service
 	CalendarID string
 
@@ -24,19 +24,8 @@ type Syncher[T synchronizer.Eventable] struct {
 	EventKey func(*calendar.Event) (string, error)
 }
 
-func New[T synchronizer.Eventable](Service *calendar.Service,
-	CalendarID string,
-	EventKey func(*calendar.Event) (string, error),
-) synchronizer.Synchronizer[T] {
-	return &Syncher[T]{
-		Service:    Service,
-		CalendarID: CalendarID,
-		EventKey:   EventKey,
-	}
-}
-
 // Do plans and executes the necessary Calendar operations to sync events.
-func (s *Syncher[T]) Do(ctx context.Context, events []T) (map[string]synchronizer.EventPlan[T], error) {
+func (s *Syncher[T]) Do(ctx context.Context, events []T) (map[string]types.EventPlan[T], error) {
 	plan, err := s.ActionPlan(events)
 	if err != nil {
 		return plan, err
@@ -47,7 +36,7 @@ func (s *Syncher[T]) Do(ctx context.Context, events []T) (map[string]synchronize
 
 // ExecutePlan executes the plan produced by Syncher.ActionPlan.  That method is exposed for logging/printing purposes.
 // If no logging is desired, simply call Syncher.Do instead.
-func (s *Syncher[T]) ExecutePlan(actionPlan map[string]synchronizer.EventPlan[T]) error {
+func (s *Syncher[T]) ExecutePlan(actionPlan map[string]types.EventPlan[T]) error {
 	for k, plan := range actionPlan {
 		op := strings.ToUpper(string(plan.Operation))
 		slog.Debug(fmt.Sprintf("%s calendar event", op), "proposed", plan.Proposed, "existing", plan.Existing)
@@ -73,7 +62,7 @@ func (s *Syncher[T]) ExecutePlan(actionPlan map[string]synchronizer.EventPlan[T]
 // ActionPlan produces a plan for Calendar synchronization.
 // The returned collection may be useful for printing etc.
 // If not required, call Syncher.Do instead.
-func (s *Syncher[T]) ActionPlan(events []T) (map[string]synchronizer.EventPlan[T], error) {
+func (s *Syncher[T]) ActionPlan(events []T) (map[string]types.EventPlan[T], error) {
 	// TODO: Hypothetical OOM risk just dumping all pages into a slice,
 	// but in local work, this is using less memory than Firefox.
 	// TODO: Could be mitigated a bit by the Fields() option, but that doesn't seem to like the parameters with their given names?
@@ -94,19 +83,19 @@ func (s *Syncher[T]) ActionPlan(events []T) (map[string]synchronizer.EventPlan[T
 		nextToken = eventsResp.NextPageToken
 	}
 
-	plans := make(map[string]synchronizer.EventPlan[T])
+	plans := make(map[string]types.EventPlan[T])
 	for _, event := range calendarEvents {
 		key, err := s.EventKey(event)
 		if err != nil {
 			return nil, err
 		}
 
-		plans[key] = synchronizer.EventPlan[T]{
+		plans[key] = types.EventPlan[T]{
 			Existing: event,
 		}
 	}
 	for _, proposed := range events {
-		plans[proposed.Key()] = synchronizer.EventPlan[T]{
+		plans[proposed.Key()] = types.EventPlan[T]{
 			Existing: plans[proposed.Key()].Existing,
 			Proposed: proposed,
 		}
@@ -115,16 +104,16 @@ func (s *Syncher[T]) ActionPlan(events []T) (map[string]synchronizer.EventPlan[T
 	for k, plan := range plans {
 		switch {
 		case plan.Proposed.CalendarEvent() != nil && plan.Existing == nil:
-			plan.Operation = synchronizer.InsertCalendarOp
+			plan.Operation = types.InsertCalendarOp
 			plans[k] = plan
 		case plan.Proposed.CalendarEvent() == nil && plan.Existing != nil:
-			plan.Operation = synchronizer.DeleteCalendarOp
+			plan.Operation = types.DeleteCalendarOp
 			plans[k] = plan
 		case plan.Proposed.CalendarEvent() != nil && plan.Existing != nil && plan.Proposed.Matches(plan.Existing):
-			plan.Operation = synchronizer.NilCalendarOp
+			plan.Operation = types.NilCalendarOp
 			plans[k] = plan
 		case plan.Proposed.CalendarEvent() != nil && plan.Existing != nil && !plan.Proposed.Matches(plan.Existing):
-			plan.Operation = synchronizer.UpdateCalendarOp
+			plan.Operation = types.UpdateCalendarOp
 			plans[k] = plan
 		default:
 			panic("Both proposed and existing events are nil, but somehow we still have this event keyed.")
@@ -166,16 +155,16 @@ func (s *Syncher[T]) calendarQueryTimeMin(events []T) time.Time {
 	return timeMin
 }
 
-func (s *Syncher[T]) execute(plan synchronizer.EventPlan[T]) (*calendar.Event, error) {
+func (s *Syncher[T]) execute(plan types.EventPlan[T]) (*calendar.Event, error) {
 	switch op := plan.Operation; op {
-	case synchronizer.InsertCalendarOp:
+	case types.InsertCalendarOp:
 		return s.Service.Events.Insert(s.CalendarID, plan.Proposed.CalendarEvent()).Do()
-	case synchronizer.DeleteCalendarOp:
+	case types.DeleteCalendarOp:
 		// Return the old event link for data tracking.  Even though deleted, the link could be useful as a reference, etc.
 		return plan.Existing, s.Service.Events.Delete(s.CalendarID, plan.Existing.Id).Do()
-	case synchronizer.NilCalendarOp:
+	case types.NilCalendarOp:
 		return plan.Existing, nil
-	case synchronizer.UpdateCalendarOp:
+	case types.UpdateCalendarOp:
 		return s.Service.Events.Update(s.CalendarID, plan.Existing.Id, plan.Proposed.CalendarEvent()).Do()
 	default:
 		return nil, fmt.Errorf("unexpected operation %q", op)
