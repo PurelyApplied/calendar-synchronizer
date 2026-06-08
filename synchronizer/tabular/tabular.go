@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/PurelyApplied/calendar-synchronizer/synchronizer"
+	"github.com/PurelyApplied/calendar-synchronizer/synchronizer/internal"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
 	"google.golang.org/api/calendar/v3"
@@ -19,31 +20,36 @@ type Eventable interface {
 	Row() table.Row
 }
 
-// test assretion: tabular Synchronizer is still a Synchronizer
-var _ synchronizer.Synchronizer[Eventable] = &Synchronizer[Eventable]{}
+// test assertion: tabular Synchronizer is still a Synchronizer
+var _ Synchronizer[Eventable] = &syncher[Eventable]{}
 
-type Synchronizer[T Eventable] struct {
-	synchronizer synchronizer.Syncher[T]
+type Synchronizer[T Eventable] interface {
+	synchronizer.Synchronizer[T]
+	Table(plan map[string]synchronizer.EventPlan[T]) (table.Writer, TableConfig)
+}
+
+type syncher[T Eventable] struct {
+	synchronizer internal.Syncher[T]
 	// Header items for rows produced by each Eventable row.
 	// The table returned by Table will include this Header for each Eventable entry's columns.
 	header table.Row
 }
 
-func (s *Synchronizer[T]) Do(ctx context.Context, events []T) (map[string]synchronizer.EventPlan[T], error) {
+func (s *syncher[T]) Do(ctx context.Context, events []T) (map[string]synchronizer.EventPlan[T], error) {
 	return s.synchronizer.Do(ctx, events)
 }
 
-func (s *Synchronizer[T]) ExecutePlan(actionPlan map[string]synchronizer.EventPlan[T]) error {
+func (s *syncher[T]) ExecutePlan(actionPlan map[string]synchronizer.EventPlan[T]) error {
 	return s.synchronizer.ExecutePlan(actionPlan)
 }
 
-func (s *Synchronizer[T]) ActionPlan(events []T) (map[string]synchronizer.EventPlan[T], error) {
+func (s *syncher[T]) ActionPlan(events []T) (map[string]synchronizer.EventPlan[T], error) {
 	return s.synchronizer.ActionPlan(events)
 }
 
-func New[T Eventable](Service *calendar.Service, CalendarID string, EventKey func(*calendar.Event) (string, error), Header table.Row) synchronizer.Synchronizer[T] {
-	return &Synchronizer[T]{
-		synchronizer: synchronizer.Syncher[T]{
+func New[T Eventable](Service *calendar.Service, CalendarID string, EventKey func(*calendar.Event) (string, error), Header table.Row) Synchronizer[T] {
+	return &syncher[T]{
+		synchronizer: internal.Syncher[T]{
 			Service:    Service,
 			CalendarID: CalendarID,
 			EventKey:   EventKey,
@@ -85,7 +91,7 @@ type TableConfig struct {
 // - - "Done" renders bools as 🗸 or
 // - SuppressEmptyColumns() is given (since ideally, "Error" will be empty).
 // These configurations are returned as the second return, if you would like to modify them.
-func (s *Synchronizer[T]) Table(plan map[string]synchronizer.EventPlan[T]) (table.Writer, TableConfig) {
+func (s *syncher[T]) Table(plan map[string]synchronizer.EventPlan[T]) (table.Writer, TableConfig) {
 	tbl := table.NewWriter()
 	cfg := TableConfig{}
 	var head table.Row
