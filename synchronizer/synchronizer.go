@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jedib0t/go-pretty/v6/table"
 	"google.golang.org/api/calendar/v3"
 	"google.golang.org/api/googleapi"
 )
@@ -40,11 +39,14 @@ type Eventable interface {
 	Matches(*calendar.Event) bool
 }
 
-type Tabularizable interface {
-	Row() table.Row
+type Synchronizer[T Eventable] interface {
+	Do(ctx context.Context, events []T) (map[string]EventPlan[T], error)
+	ExecutePlan(actionPlan map[string]EventPlan[T]) error
+	ActionPlan(events []T) (map[string]EventPlan[T], error)
 }
 
-type Synchronizer[T Eventable] struct {
+// TODO: Move to internal/
+type Syncher[T Eventable] struct {
 	Service    *calendar.Service
 	CalendarID string
 
@@ -54,7 +56,8 @@ type Synchronizer[T Eventable] struct {
 
 // EventPlan correlates proposed and existing events, noting intended Calendar operations and holding any error experienced.
 type EventPlan[T Eventable] struct {
-	Proposed  T
+	Proposed T
+	// TODO: Before and After operation are sharing Existing.  Should those be split?  Is there utility in having information the Before in the table?
 	Existing  *calendar.Event
 	Operation CalendarOperation
 	Done      bool
@@ -72,35 +75,19 @@ func (ec *EventPlan[T]) executeAndRecord() error {
 	return err
 }
 
-// Row returns a table.Row containing State, ResultErr, Proposed event, and Calendar Event URL (if any).
-// If the proposed event is Tabularizable, .Row() is called to expand the columns; otherwise it is passed directly.
-func (ec *EventPlan[T]) Row() table.Row {
-	row := table.Row{}
-	row = append(row, ec.Operation)
-
-	var result string
-	if ec.ResultErr != nil {
-		result = ec.ResultErr.Error()
+func New[T Eventable](Service *calendar.Service,
+	CalendarID string,
+	EventKey func(*calendar.Event) (string, error),
+) Synchronizer[T] {
+	return &Syncher[T]{
+		Service:    Service,
+		CalendarID: CalendarID,
+		EventKey:   EventKey,
 	}
-	row = append(row, result)
-
-	if c, ok := any(ec.Proposed).(Tabularizable); ok {
-		row = append(row, c.Row()...)
-	} else {
-		row = append(row, ec.Proposed)
-	}
-
-	url := ""
-	if ec.Existing != nil {
-		url = ec.Existing.HtmlLink
-	}
-	row = append(row, url)
-
-	return row
 }
 
 // Do plans and executes the necessary Calendar operations to sync events.
-func (s *Synchronizer[T]) Do(ctx context.Context, events []T) (map[string]EventPlan[T], error) {
+func (s *Syncher[T]) Do(ctx context.Context, events []T) (map[string]EventPlan[T], error) {
 	plan, err := s.ActionPlan(events)
 	if err != nil {
 		return plan, err
@@ -109,9 +96,9 @@ func (s *Synchronizer[T]) Do(ctx context.Context, events []T) (map[string]EventP
 	return plan, s.ExecutePlan(plan)
 }
 
-// ExecutePlan executes the plan produced by Synchronizer.ActionPlan.  That method is exposed for logging/printing purposes.
-// If no logging is desired, simply call Synchronizer.Do instead.
-func (s *Synchronizer[T]) ExecutePlan(actionPlan map[string]EventPlan[T]) error {
+// ExecutePlan executes the plan produced by Syncher.ActionPlan.  That method is exposed for logging/printing purposes.
+// If no logging is desired, simply call Syncher.Do instead.
+func (s *Syncher[T]) ExecutePlan(actionPlan map[string]EventPlan[T]) error {
 	for k, plan := range actionPlan {
 		op := strings.ToUpper(string(plan.Operation))
 		slog.Debug(fmt.Sprintf("%s calendar event", op), "proposed", plan.Proposed, "existing", plan.Existing)
@@ -131,12 +118,10 @@ func (s *Synchronizer[T]) ExecutePlan(actionPlan map[string]EventPlan[T]) error 
 	return errors.Join(allErrors...)
 }
 
-// TODO: Opts - Aggregate errs or eject
-
 // ActionPlan produces a plan for Calendar synchronization.
 // The returned collection may be useful for printing etc.
-// If not required, call Synchronizer.Do instead.
-func (s *Synchronizer[T]) ActionPlan(events []T) (map[string]EventPlan[T], error) {
+// If not required, call Syncher.Do instead.
+func (s *Syncher[T]) ActionPlan(events []T) (map[string]EventPlan[T], error) {
 	// TODO: Hypothetical OOM risk just dumping all pages into a slice,
 	// but in local work, this is using less memory than Firefox.
 	// TODO: Could be mitigated a bit by the Fields() option, but that doesn't seem to like the parameters with their given names?
@@ -210,7 +195,7 @@ func (s *Synchronizer[T]) ActionPlan(events []T) (map[string]EventPlan[T], error
 	return plans, nil
 }
 
-func (s *Synchronizer[T]) calendarQueryTimeMin(events []T) time.Time {
+func (s *Syncher[T]) calendarQueryTimeMin(events []T) time.Time {
 	timeMin := time.Now()
 	for _, ev := range events {
 		e := ev.CalendarEvent()
