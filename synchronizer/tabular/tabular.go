@@ -47,14 +47,26 @@ func (s *syncher[T]) ActionPlan(events []T) (map[string]types.EventPlan[T], erro
 	return s.synchronizer.ActionPlan(events)
 }
 
+type headerer interface {
+	Header() table.Row
+}
+
+// New returns a tabularizable Synchronizer.
+// If Header is nil and T implements func (T) Header() table.Row, that header will be used.
 func New[T Eventable](Service *calendar.Service, CalendarID string, EventKey func(*calendar.Event) (string, error), Header table.Row) Synchronizer[T] {
+	head := Header
+	if head == nil {
+		if herer, ok := any(new(T)).(headerer); ok {
+			head = herer.Header()
+		}
+	}
 	return &syncher[T]{
 		synchronizer: internal.Syncher[T]{
 			Service:    Service,
 			CalendarID: CalendarID,
 			EventKey:   EventKey,
 		},
-		header: Header,
+		header: head,
 	}
 }
 
@@ -113,7 +125,7 @@ func (s *syncher[T]) Table(plan map[string]types.EventPlan[T]) (table.Writer, Ta
 		startTime, err := Start(ev)
 		// TODO
 		_ = err
-		row = append(row, k, p.Existing, startTime)
+		row = append(row, k, ev.HtmlLink, startTime)
 		tbl.AppendRow(row)
 	}
 
@@ -132,7 +144,7 @@ func (s *syncher[T]) Table(plan map[string]types.EventPlan[T]) (table.Writer, Ta
 
 	filter := []table.FilterBy{
 		{
-			Name:     "Op",
+			Name:     "Operation",
 			Operator: table.NotEqual,
 			Value:    types.NilCalendarOp,
 		},
