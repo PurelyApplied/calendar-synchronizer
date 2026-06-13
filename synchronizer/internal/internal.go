@@ -39,7 +39,7 @@ func (s *Syncher[T]) Do(ctx context.Context, events []T) (map[string]types.Event
 func (s *Syncher[T]) ExecutePlan(actionPlan map[string]types.EventPlan[T]) error {
 	for k, plan := range actionPlan {
 		op := strings.ToUpper(string(plan.Operation))
-		slog.Debug(fmt.Sprintf("%s calendar event", op), "proposed", plan.Proposed, "existing", plan.Existing)
+		slog.Debug(fmt.Sprintf("%s calendar event", op), "proposed", plan.Proposed, "proposed event", plan.Proposed.CalendarEvent(), "existing", plan.Existing)
 
 		ev, err := s.execute(plan)
 		plan.Existing = ev
