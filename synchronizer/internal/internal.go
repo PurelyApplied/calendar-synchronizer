@@ -37,6 +37,12 @@ func (s *Syncher[T]) Do(ctx context.Context, events []T) (map[string]types.Event
 // ExecutePlan executes the plan produced by Syncher.ActionPlan.  That method is exposed for logging/printing purposes.
 // If no logging is desired, simply call Syncher.Do instead.
 func (s *Syncher[T]) ExecutePlan(actionPlan map[string]types.EventPlan[T]) error {
+	counts := make(map[types.CalendarOperation]int)
+	for _, p := range actionPlan {
+		counts[p.Operation]++
+	}
+	slog.Info("Executing plan with following operations:", "counts", counts)
+
 	for k, plan := range actionPlan {
 		op := strings.ToUpper(string(plan.Operation))
 		slog.Debug(fmt.Sprintf("%s calendar event", op), "proposed", plan.Proposed, "proposed event", plan.Proposed.CalendarEvent(), "existing", plan.Existing)
