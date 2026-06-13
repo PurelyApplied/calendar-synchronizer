@@ -100,7 +100,7 @@ type TableConfig struct {
 // - Apply column configurations such that:
 // - - "datetime" column is hidden.
 // - - Nil "Error" entries are printed as empty string rather than "<nil>" (to permit empty column drop).
-// - - "Done" renders bools as 🗸 or
+// - - "Done" renders bools as "X"/"" in place of "true"/"false"
 // - SuppressEmptyColumns() is given (since ideally, "Error" will be empty).
 // These configurations are returned as the second return, if you would like to modify them.
 func (s *syncher[T]) Table(plan map[string]types.EventPlan[T]) (table.Writer, TableConfig) {
@@ -179,14 +179,14 @@ func (s *syncher[T]) Table(plan map[string]types.EventPlan[T]) (table.Writer, Ta
 			Name:  "Done",
 			Align: text.AlignCenter,
 			Transformer: func(val interface{}) string {
-				// ✓✔ ✗✘
+				// Unicode would be prettier, but doesn't always work (say, in an alpine Docker container) ✓✔ ✗✘
 				switch d, ok := val.(bool); {
 				case !ok:
 					return "error: non-bool `Done` value"
 				case d:
-					return "✔"
+					return "X"
 				case !d:
-					return "✘"
+					return ""
 				default:
 					panic("impossible")
 				}
