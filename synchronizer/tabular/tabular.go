@@ -5,7 +5,6 @@ package tabular
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/PurelyApplied/calendar-synchronizer/synchronizer/internal"
 	"github.com/PurelyApplied/calendar-synchronizer/synchronizer/types"
@@ -122,7 +121,7 @@ func (s *syncher[T]) Table(plan map[string]types.EventPlan[T]) (table.Writer, Ta
 		if ev == nil {
 			ev = p.Existing
 		}
-		startTime, err := Start(ev)
+		startTime, err := internal.Start(ev)
 		// TODO
 		_ = err
 		row = append(row, k, ev.HtmlLink, startTime)
@@ -226,15 +225,4 @@ func (ec *EventPlan[T]) Row() table.Row {
 	row = append(row, url)
 
 	return row
-}
-
-func Start(e *calendar.Event) (time.Time, error) {
-	switch {
-	case e.Start.DateTime != "":
-		return time.Parse(time.RFC3339, e.Start.DateTime)
-	case e.Start.Date != "":
-		return time.Parse(time.DateOnly, e.Start.Date)
-	default:
-		return time.Time{}, fmt.Errorf("event has neither Start.Date nor Start.DateTime; e=%#v", e)
-	}
 }

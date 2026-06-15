@@ -133,23 +133,10 @@ func (s *Syncher[T]) calendarQueryTimeMin(events []T) time.Time {
 	timeMin := time.Now()
 	for _, ev := range events {
 		e := ev.CalendarEvent()
-		var start time.Time
-		if e.Start.DateTime != "" {
-			var err error
-			start, err = time.Parse(time.RFC3339, e.Start.DateTime)
-			if err != nil {
-				slog.Warn("Proposed event does not have RFC3339 formated datetime, making it invalid for insertion.  Skipping in query time min, but this will cause a failure later.", "DateTime", e.Start.DateTime, "event", ev)
-				continue
-			}
-		} else if e.Start.Date != "" {
-			var err error
-			start, err = time.Parse(time.DateOnly, e.Start.Date)
-			if err != nil {
-				slog.Warn("Proposed event does not have ISO 8601 formated date, making it invalid for insertion.  Skipping in query time min, but this will cause a failure later.", "Date", e.Start.Date, "event", ev)
-				continue
-			}
-		} else {
-			slog.Warn("Event does not have Start.Date nor Start.DateTime.  Did that field get filtered?")
+		slog.Info("Event start times:", "DateTime", e.Start.DateTime)
+		start, err := Start(e)
+		if err != nil {
+			slog.Warn("Failed to parse time for proposed event.  Skipping for query time min, but this will cause insertion failure later.", "error", err, "event", ev)
 			continue
 		}
 
@@ -174,5 +161,25 @@ func (s *Syncher[T]) execute(plan types.EventPlan[T]) (*calendar.Event, error) {
 		return s.Service.Events.Update(s.CalendarID, plan.Existing.Id, plan.Proposed.CalendarEvent()).Do()
 	default:
 		return nil, fmt.Errorf("unexpected operation %q", op)
+	}
+}
+
+func Start(e *calendar.Event) (time.Time, error) {
+	// TODO Allow ParseInLocation if location is set.
+	switch {
+	case e.Start.DateTime != "":
+		tm, err := time.Parse(time.RFC3339, e.Start.DateTime)
+		if err != nil {
+			err = fmt.Errorf("failed to parse datetime: %w", err)
+		}
+		return tm, err
+	case e.Start.Date != "":
+		tm, err := time.Parse(time.DateOnly, e.Start.Date)
+		if err != nil {
+			err = fmt.Errorf("failed to parse date: %w", err)
+		}
+		return tm, err
+	default:
+		return time.Time{}, fmt.Errorf("event has neither Start.Date nor Start.DateTime; e=%#v", e)
 	}
 }
